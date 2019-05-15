@@ -16,6 +16,7 @@
 #include "unicode.h"
 #include "bt_interface.h"
 #include "mask_ext.h"
+#include "logger.h"
 
 typedef struct {
 	unsigned char *pxkeys[DES_BS_DEPTH]; /* Pointers into xkeys.c */
@@ -1233,25 +1234,8 @@ void save_lws_config(const char* config_file, int id_gpu, size_t lws, unsigned i
 	}
 	file = fopen(path_expand(config_file_name), "w");
 
-#if OS_FLOCK || FCNTL_LOCKS
-	{
-#if FCNTL_LOCKS
-		struct flock lock;
+	jtr_lock(fileno(file), EXCLUSIVE, WAIT);
 
-		memset(&lock, 0, sizeof(lock));
-		lock.l_type = F_WRLCK;
-		while (fcntl(fileno(file), F_SETLKW, &lock)) {
-			if (errno != EINTR)
-				pexit("fcntl(F_WRLCK)");
-		}
-#else
-		while (flock(fileno(file), LOCK_EX)) {
-			if (errno != EINTR)
-				pexit("flock(LOCK_EX)");
-		}
-#endif
-	}
-#endif
 	fprintf(file, ""Zu" %u", lws, forced_global_key);
 	fclose(file);
 }
@@ -1270,26 +1254,8 @@ int restore_lws_config(const char *config_file, int id_gpu, size_t *lws, size_t 
 	if (file == NULL)
 		return 0;
 
+	jtr_lock(fileno(file), SHARED, WAIT);
 
-#if OS_FLOCK || FCNTL_LOCKS
-	{
-#if FCNTL_LOCKS
-		struct flock lock;
-
-		memset(&lock, 0, sizeof(lock));
-		lock.l_type = F_RDLCK;
-		while (fcntl(fileno(fp), F_SETLKW, &lock)) {
-			if (errno != EINTR)
-				pexit("fcntl(F_RDLCK)");
-		}
-#else
-		while (flock(fileno(fp), LOCK_SH)) {
-			if (errno != EINTR)
-				pexit("flock(LOCK_SH)");
-		}
-#endif
-	}
-#endif
 	if (fscanf(file, ""Zu" %u", lws, &param) != 2 || *lws > extern_lws_limit) {
 		if (forced_global_key)
 			*forced_global_key = param;
